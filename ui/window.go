@@ -6,7 +6,6 @@ import (
 	"log"
 
 	"golang.org/x/exp/shiny/driver"
-	"golang.org/x/exp/shiny/imageutil"
 	"golang.org/x/exp/shiny/screen"
 	"golang.org/x/image/draw"
 	"golang.org/x/mobile/event/lifecycle"
@@ -31,9 +30,9 @@ type Visualizer struct {
 func (pw *Visualizer) Main() {
 	pw.tx = make(chan screen.Texture)
 	pw.done = make(chan struct{})
-	pw.pos = image.Rect(412, 284, 612, 484)
-	pw.pos.Max.X = 200
-	pw.pos.Max.Y = 200
+
+	// Початкове положення фігури "Т" по центру
+	pw.pos = image.Rect(300, 250, 500, 450)
 	driver.Main(pw.run)
 }
 
@@ -113,9 +112,10 @@ func (pw *Visualizer) handleEvent(e interface{}, t screen.Texture) {
 	case error:
 		log.Printf("ERROR: %s", e)
 
-	case mouse.Event: // Перевірте правильність імпорту пакету mouse
+	case mouse.Event:
 		if t == nil {
 			if e.Button == mouse.ButtonLeft {
+				// Оновлення положення фігури "Т"
 				pw.pos = image.Rect(int(e.X)-100, int(e.Y)-100, int(e.X)+100, int(e.Y)+100)
 				log.Println("Mouse event - position:", pw.pos)
 				pw.w.Send(paint.Event{})
@@ -131,12 +131,16 @@ func (pw *Visualizer) handleEvent(e interface{}, t screen.Texture) {
 
 func (pw *Visualizer) drawDefaultUI() {
 	log.Println("Drawing default UI")
-	pw.w.Fill(pw.sz.Bounds(), color.RGBA{0, 255, 0, 255}, draw.Src)
+	pw.w.Fill(pw.sz.Bounds(), color.RGBA{0, 255, 0, 255}, draw.Src) // Фон
 
+	// Малювання фігури "Т"
 	figColor := color.RGBA{255, 255, 0, 255}
-	pw.w.Fill(pw.pos, figColor, draw.Src)
 
-	for _, br := range imageutil.Border(pw.sz.Bounds(), 10) {
-		pw.w.Fill(br, color.White, draw.Src)
-	}
+	// Горизонтальна частина "Т"
+	horizontalRect := image.Rect(pw.pos.Min.X-25, pw.pos.Min.Y, pw.pos.Max.X+25, pw.pos.Min.Y+100)
+	pw.w.Fill(horizontalRect, figColor, draw.Src)
+
+	// Вертикальна частина "Т"
+	verticalRect := image.Rect(pw.pos.Min.X+25, pw.pos.Min.Y+50, pw.pos.Max.X-25, pw.pos.Max.Y+50)
+	pw.w.Fill(verticalRect, figColor, draw.Src)
 }
