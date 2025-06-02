@@ -2,51 +2,67 @@ package painter
 
 import (
 	"image"
+	"sync"
 
+	"github.com/roman-mazur/architecture-lab-3/ui"
 	"golang.org/x/exp/shiny/screen"
 )
 
-// Receiver отримує текстуру, яка була підготовлена в результаті виконання команд у циклі подій.
 type Receiver interface {
 	Update(t screen.Texture)
 }
 
-// Loop реалізує цикл подій для формування текстури отриманої через виконання операцій отриманих з внутрішньої черги.
 type Loop struct {
 	Receiver Receiver
+	queue    []Operation
+	mu       sync.Mutex
+	done     chan struct{}
 
-	next screen.Texture // текстура, яка зараз формується
-	prev screen.Texture // текстура, яка була відправлення останнього разу у Receiver
+	next screen.Texture
+	prev screen.Texture
 
 	mq messageQueue
-
-	stop    chan struct{}
-	stopReq bool
 }
 
 var size = image.Pt(400, 400)
 
-// Start запускає цикл подій. Цей метод потрібно запустити до того, як викликати на ньому будь-які інші методи.
 func (l *Loop) Start(s screen.Screen) {
 	l.next, _ = s.NewTexture(size)
 	l.prev, _ = s.NewTexture(size)
+	l.done = make(chan struct{})
 
-	// TODO: стартувати цикл подій.
+	go func() {
+		for {
+			select {
+			case <-l.done:
+				return
+			default:
+				l.mu.Lock()
+				if len(l.queue) > 0 {
+					op := l.queue[0]
+					l.queue = l.queue[1:]
+					l.mu.Unlock()
+					if visualizer, ok := l.Receiver.(*ui.Visualizer); ok {
+						op.Execute(visualizer)
+					}
+				} else {
+					l.mu.Unlock()
+				}
+			}
+		}
+	}()
 }
 
-// Post додає нову операцію у внутрішню чергу.
 func (l *Loop) Post(op Operation) {
-	if update := op.Do(l.next); update {
-		l.Receiver.Update(l.next)
-		l.next, l.prev = l.prev, l.next
-	}
+	l.mu.Lock()
+	l.queue = append(l.queue, op)
+	l.mu.Unlock()
 }
 
-// StopAndWait сигналізує про необхідність завершити цикл та блокується до моменту його повної зупинки.
 func (l *Loop) StopAndWait() {
+	close(l.done)
 }
 
-// TODO: Реалізувати чергу подій.
 type messageQueue struct{}
 
 func (mq *messageQueue) push(op Operation) {}

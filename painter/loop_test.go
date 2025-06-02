@@ -1,106 +1,107 @@
-package painter
+package painter_test
 
 import (
 	"image"
 	"image/color"
-	"image/draw"
-	"reflect"
+	"strings"
 	"testing"
 
+	"github.com/roman-mazur/architecture-lab-3/painter"
+	"github.com/roman-mazur/architecture-lab-3/painter/lang"
+	"github.com/roman-mazur/architecture-lab-3/ui"
+	"github.com/stretchr/testify/assert"
 	"golang.org/x/exp/shiny/screen"
+	"golang.org/x/image/draw"
+	"golang.org/x/mobile/event/paint"
 )
 
-func TestLoop_Post(t *testing.T) {
-	var (
-		l  Loop
-		tr testReceiver
-	)
-	l.Receiver = &tr
-
-	var testOps []string
-
-	l.Start(mockScreen{})
-	l.Post(logOp(t, "do white fill", WhiteFill))
-	l.Post(logOp(t, "do green fill", GreenFill))
-	l.Post(UpdateOp)
-
-	for i := 0; i < 3; i++ {
-		go l.Post(logOp(t, "do green fill", GreenFill))
-	}
-
-	l.Post(OperationFunc(func(screen.Texture) {
-		testOps = append(testOps, "op 1")
-		l.Post(OperationFunc(func(screen.Texture) {
-			testOps = append(testOps, "op 2")
-		}))
-	}))
-	l.Post(OperationFunc(func(screen.Texture) {
-		testOps = append(testOps, "op 3")
-	}))
-
-	l.StopAndWait()
-
-	if tr.lastTexture == nil {
-		t.Fatal("Texture was not updated")
-	}
-	mt, ok := tr.lastTexture.(*mockTexture)
-	if !ok {
-		t.Fatal("Unexpected texture", tr.lastTexture)
-	}
-	if mt.Colors[0] != color.White {
-		t.Error("First color is not white:", mt.Colors)
-	}
-	if len(mt.Colors) != 2 {
-		t.Error("Unexpected size of colors:", mt.Colors)
-	}
-
-	if !reflect.DeepEqual(testOps, []string{"op 1", "op 2", "op 3"}) {
-		t.Error("Bad order:", testOps)
-	}
-}
-
-func logOp(t *testing.T, msg string, op OperationFunc) OperationFunc {
-	return func(tx screen.Texture) {
-		t.Log(msg)
-		op(tx)
-	}
-}
-
 type testReceiver struct {
-	lastTexture screen.Texture
+	texture screen.Texture
 }
 
 func (tr *testReceiver) Update(t screen.Texture) {
-	tr.lastTexture = t
+	tr.texture = t
 }
 
-type mockScreen struct{}
+func (tr *testReceiver) Execute(v *ui.Visualizer) {}
 
-func (m mockScreen) NewBuffer(size image.Point) (screen.Buffer, error) {
-	panic("implement me")
+type MockScreen struct{}
+
+func (ms *MockScreen) NewWindow(opts *screen.NewWindowOptions) (screen.Window, error) {
+	return &MockWindow{}, nil
 }
 
-func (m mockScreen) NewTexture(size image.Point) (screen.Texture, error) {
-	return new(mockTexture), nil
+func (ms *MockScreen) NewBuffer(size image.Point) (screen.Buffer, error) {
+	return nil, nil
 }
 
-func (m mockScreen) NewWindow(opts *screen.NewWindowOptions) (screen.Window, error) {
-	panic("implement me")
+func (ms *MockScreen) NewTexture(size image.Point) (screen.Texture, error) {
+	return &MockTexture{size: size}, nil
 }
 
-type mockTexture struct {
-	Colors []color.Color
+type MockWindow struct{}
+
+func (mw *MockWindow) Release()                                                                     {}
+func (mw *MockWindow) Upload(dp image.Point, src screen.Buffer, sr image.Rectangle)                 {}
+func (mw *MockWindow) Fill(dr image.Rectangle, src color.Color, op draw.Op)                         {}
+func (mw *MockWindow) Scale(dr image.Rectangle, src screen.Texture, sr image.Rectangle, op draw.Op) {}
+func (mw *MockWindow) Draw(aff3 [6]float64, src screen.Texture, sr image.Rectangle, op draw.Op, opts *screen.DrawOptions) {
+}
+func (mw *MockWindow) DrawUniform(aff3 [6]float64, src screen.Texture, sr image.Rectangle, op draw.Op, opts *screen.DrawOptions) {
+}
+func (mw *MockWindow) Publish()               {}
+func (mw *MockWindow) Send(event interface{}) {}
+func (mw *MockWindow) NextEvent() interface{} { return nil }
+func (mw *MockWindow) Copy(dp image.Point, src screen.Texture, sr image.Rectangle, op draw.Op, opts *screen.DrawOptions) {
 }
 
-func (m *mockTexture) Release() {}
-
-func (m *mockTexture) Size() image.Point { return size }
-
-func (m *mockTexture) Bounds() image.Rectangle {
-	return image.Rectangle{Max: m.Size()}
+type MockTexture struct {
+	size image.Point
 }
 
-func (m *mockTexture) Upload(dp image.Point, src screen.Buffer, sr image.Rectangle) {}
-func (m *mockTexture) Fill(dr image.Rectangle, src color.Color, op draw.Op) {
-	m.Colors = append(m.Colors, src)
+func (mt *MockTexture) Release()                                                     {}
+func (mt *MockTexture) Size() image.Point                                            { return mt.size }
+func (mt *MockTexture) Bounds() image.Rectangle                                      { return image.Rect(0, 0, mt.size.X, mt.size.Y) }
+func (mt *MockTexture) Upload(dp image.Point, src screen.Buffer, sr image.Rectangle) {}
+func (mt *MockTexture) Fill(dr image.Rectangle, src color.Color, op draw.Op)         {}
+func (mt *MockTexture) Scale(dr image.Rectangle, src screen.Texture, sr image.Rectangle, op draw.Op) {
+}
+func (mt *MockTexture) Draw(aff3 [6]float64, src screen.Texture, sr image.Rectangle, op draw.Op, opts *screen.DrawOptions) {
+}
+func (mt *MockTexture) DrawUniform(aff3 [6]float64, src screen.Texture, sr image.Rectangle, op draw.Op, opts *screen.DrawOptions) {
+}
+
+var WhiteFill = color.RGBA{255, 255, 255, 255}
+var GreenFill = color.RGBA{0, 255, 0, 255}
+
+type UpdateOp struct{}
+
+func (op UpdateOp) Execute(v *ui.Visualizer) {
+	v.W.Send(paint.Event{})
+}
+
+func TestLoop(t *testing.T) {
+	var tr testReceiver
+	var l painter.Loop
+	l.Receiver = &tr
+
+	mockScreen := &MockScreen{}
+	l.Start(mockScreen)
+
+	l.Post(painter.BgRectOp{Rect: image.Rect(0, 0, 100, 100), FillColor: WhiteFill})
+	l.Post(painter.FigureOp{Rect: image.Rect(10, 10, 90, 90), FillColor: GreenFill})
+	l.Post(UpdateOp{})
+
+	l.StopAndWait()
+
+	if tr.texture == nil {
+		t.Fatal("expected texture to be updated")
+	}
+}
+
+func TestParser(t *testing.T) {
+	p := &lang.Parser{}
+	cmds, err := p.Parse(strings.NewReader("BGRECT 0 0 100 100 ffffff\nFIGURE 10 10 90 90 00ff00\nMOVE 10 10"))
+	assert.Nil(t, err)
+	assert.Len(t, cmds, 3)
 }

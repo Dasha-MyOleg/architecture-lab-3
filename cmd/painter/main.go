@@ -1,6 +1,7 @@
 package main
 
 import (
+	"log"
 	"net/http"
 
 	"github.com/roman-mazur/architecture-lab-3/painter"
@@ -10,14 +11,12 @@ import (
 
 func main() {
 	var (
-		pv ui.Visualizer // Візуалізатор створює вікно та малює у ньому.
-
-		// Потрібні для частини 2.
-		opLoop painter.Loop // Цикл обробки команд.
-		parser lang.Parser  // Парсер команд.
+		pv     ui.Visualizer // Візуалізатор створює вікно та малює у ньому.
+		opLoop painter.Loop  // Цикл обробки команд.
+		parser lang.Parser   // Парсер команд.
 	)
 
-	//pv.Debug = true
+	// pv.Debug = true
 	pv.Title = "Simple painter"
 
 	pv.OnScreenReady = opLoop.Start
@@ -25,7 +24,10 @@ func main() {
 
 	go func() {
 		http.Handle("/", lang.HttpHandler(&opLoop, &parser))
-		_ = http.ListenAndServe("localhost:17000", nil)
+		log.Println("Starting server on :8080")
+		if err := http.ListenAndServe(":8080", nil); err != nil {
+			log.Fatalf("could not start server: %s", err)
+		}
 	}()
 
 	pv.Main()

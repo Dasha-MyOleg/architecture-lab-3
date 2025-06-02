@@ -1,48 +1,44 @@
 package painter
 
 import (
+	"image"
 	"image/color"
 
-	"golang.org/x/exp/shiny/screen"
+	"github.com/roman-mazur/architecture-lab-3/ui"
+	"golang.org/x/image/draw"
+	"golang.org/x/mobile/event/paint"
 )
 
-// Operation змінює вхідну текстуру.
 type Operation interface {
-	// Do виконує зміну операції, повертаючи true, якщо текстура вважається готовою для відображення.
-	Do(t screen.Texture) (ready bool)
+	Execute(v *ui.Visualizer)
 }
 
-// OperationList групує список операції в одну.
-type OperationList []Operation
-
-func (ol OperationList) Do(t screen.Texture) (ready bool) {
-	for _, o := range ol {
-		ready = o.Do(t) || ready
-	}
-	return
+type BgRectOp struct {
+	FillColor color.Color
+	Rect      image.Rectangle
 }
 
-// UpdateOp операція, яка не змінює текстуру, але сигналізує, що текстуру потрібно розглядати як готову.
-var UpdateOp = updateOp{}
-
-type updateOp struct{}
-
-func (op updateOp) Do(t screen.Texture) bool { return true }
-
-// OperationFunc використовується для перетворення функції оновлення текстури в Operation.
-type OperationFunc func(t screen.Texture)
-
-func (f OperationFunc) Do(t screen.Texture) bool {
-	f(t)
-	return false
+func (op BgRectOp) Execute(v *ui.Visualizer) {
+	v.BgColor = op.FillColor
+	v.BgRect = op.Rect
+	v.W.Send(paint.Event{})
 }
 
-// WhiteFill зафарбовує тестуру у білий колір. Може бути викоистана як Operation через OperationFunc(WhiteFill).
-func WhiteFill(t screen.Texture) {
-	t.Fill(t.Bounds(), color.White, screen.Src)
+type FigureOp struct {
+	FillColor color.Color
+	Rect      image.Rectangle
 }
 
-// GreenFill зафарбовує тестуру у зелений колір. Може бути викоистана як Operation через OperationFunc(GreenFill).
-func GreenFill(t screen.Texture) {
-	t.Fill(t.Bounds(), color.RGBA{G: 0xff, A: 0xff}, screen.Src)
+func (op FigureOp) Execute(v *ui.Visualizer) {
+	v.W.Fill(op.Rect, op.FillColor, draw.Src)
+	v.W.Send(paint.Event{})
+}
+
+type MoveOp struct {
+	Offset image.Point
+}
+
+func (op MoveOp) Execute(v *ui.Visualizer) {
+	v.Pos = v.Pos.Add(op.Offset)
+	v.W.Send(paint.Event{})
 }
